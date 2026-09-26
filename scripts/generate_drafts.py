@@ -18,6 +18,9 @@ import re
 from datetime import datetime, timezone, timedelta
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()  # ローカル実行時、リポジトリ直下の .env を読み込む(GitHub Actions上ではSecretsが直接環境変数として渡るため無害)
 
 # ── 設定 ────────────────────────────────────────────────
 
@@ -26,8 +29,20 @@ RAKUTEN_ACCESS_KEY = os.environ["RAKUTEN_ACCESS_KEY"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 
-# PWAの公開URL(GitHub Pagesのアドレスに合わせて後で書き換える)
-PWA_BASE_URL = os.environ.get("PWA_BASE_URL", "https://<your-github-username>.github.io/<your-repo-name>/")
+# PWAの公開URL(GitHub Pagesのアドレス)
+PWA_BASE_URL = os.environ.get("PWA_BASE_URL", "https://k2ago09-tech.github.io/rakuten-room-bot/")
+
+# 楽天ウェブサービスのアプリ登録を「Web Application」タイプ(ドメイン制限)で行うため、
+# バックエンドからのリクエストにも同じRefererヘッダーを付与する。
+# IP制限(API/Backend Serviceタイプ)はGitHub Actionsのようにランナーの送信元IPが
+# 毎回変わる環境では運用できないため、この方式を採用している。
+RAKUTEN_REFERER = os.environ.get("RAKUTEN_REFERER", "https://k2ago09-tech.github.io/rakuten-room-bot/")
+# Web Applicationタイプの登録では、Refererに加えてOriginヘッダーも必須(片方だけだと
+# 403 REQUEST_CONTEXT_BODY_HTTP_REFERRER_MISSING になる)。Originは末尾スラッシュなしのオリジン形式。
+RAKUTEN_HEADERS = {
+    "Referer": RAKUTEN_REFERER,
+    "Origin": RAKUTEN_REFERER.rstrip("/"),
+}
 
 RANKING_ENDPOINT = "https://openapi.rakuten.co.jp/ichibaranking/api/IchibaItem/Ranking/20220601"
 
@@ -123,7 +138,7 @@ def fetch_ranking(genre_id):
         "format": "json",
         "formatVersion": 2,
     }
-    resp = requests.get(RANKING_ENDPOINT, params=params, timeout=20)
+    resp = requests.get(RANKING_ENDPOINT, params=params, headers=RAKUTEN_HEADERS, timeout=20)
     resp.raise_for_status()
     data = resp.json()
     # レスポンスの配列キー名はAPIバージョンにより Items / items の揺れがあるため両対応
@@ -141,6 +156,15 @@ def guess_concern_note(item_name, caption):
     return "特になし(価格・実績のわかりやすさで勝負する商品)"
 
 
+def extract_image_url(item):
+    urls = item.get("mediumImageUrls") or []
+    if not urls:
+        return ""
+    first = urls[0]
+    # レスポンスの形が {"imageUrl": "..."} の場合と、素の文字列の場合の両方に対応
+    return first.get("imageUrl", "") if isinstance(first, dict) else first
+
+
 def build_candidates(genre_key, genre_id, history):
     rank_history = history.setdefault("rank_history", {})
     posted = set(history.get("posted_item_codes", []))
@@ -153,8 +177,10 @@ def build_candidates(genre_key, genre_id, history):
         if not item_code or item_code in posted:
             continue
 
-        review_count = item.get("reviewCount", 0) or 0
-        review_average = item.get("reviewAverage", 0) or 0
+        # 楽天APIは数値項目も文字列で返してくることがあるため明示的にキャストする
+        review_count = int(item.get("reviewCount") or 0)
+        review_average = float(item.get("reviewAverage") or 0)
+        item_price = int(item.get("itemPrice") or 0)
         if review_count < REVIEW_COUNT_MIN or review_average < REVIEW_AVG_MIN:
             continue
 
@@ -166,10 +192,9 @@ def build_candidates(genre_key, genre_id, history):
             "genre_id": genre_id,
             "item_code": item_code,
             "item_name": item.get("itemName", ""),
-            "item_price": item.get("itemPrice", 0),
+            "item_price": item_price,
             "item_url": item.get("itemUrl", ""),
-            "image_url": (item.get("mediumImageUrls") or [{}])[0].get("imageUrl", "")
-                if item.get("mediumImageUrls") else "",
+            "image_url": extract_image_url(item),
             "caption": (item.get("itemCaption") or "")[:200],
             "review_count": review_count,
             "review_average": review_average,

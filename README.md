@@ -24,6 +24,14 @@ GitHub Actions(毎日21時JST)
 既存アプリの編集ではなく、[楽天ウェブサービス](https://webservice.rakuten.co.jp/) で
 **新規にアプリケーションを登録**して両方を発行すること。
 
+登録時、Application typeは **「Web Application」を選ぶこと**(「API/Backend Service」は
+アクセス元IPを固定リストで指定する必要があり、GitHub Actionsのようにランナーの送信元IPが
+毎回変わる環境では運用できないため)。「Web Application」はドメイン(Referrer)制限になるので、
+ドメイン欄には `k2ago09-tech.github.io` を入力する。Application URLは
+`https://k2ago09-tech.github.io/rakuten-room-bot/` とする。
+このドメイン制限は、スクリプト側で送信するHTTPリクエストに同じ`Referer`ヘッダーを
+付与することでクリアする(`scripts/generate_drafts.py` の `RAKUTEN_REFERER` で設定済み)。
+
 ### 2. Gemini APIキー取得
 
 [Google AI Studio](https://aistudio.google.com/) でAPIキーを発行(無料枠のFlash/Flash-Liteを利用)。
