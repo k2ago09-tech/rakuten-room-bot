@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>暮らしの鑑定士 - 投稿確認</title>
+<style>
+  :root {
+    --pink: #ff5f89;
+    --bg: #fafafa;
+    --card-bg: #ffffff;
+    --text: #222;
+    --muted: #888;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  h1 {
+    font-size: 18px;
+    margin: 4px 0 16px;
+  }
+  h1 .date { color: var(--muted); font-weight: normal; font-size: 14px; display: block; }
+  .card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .card img {
+    width: 100%;
+    max-height: 240px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #f0f0f0;
+    margin-bottom: 12px;
+  }
+  .item-name {
+    font-weight: bold;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .item-price {
+    color: var(--pink);
+    font-weight: bold;
+    margin-bottom: 12px;
+  }
+  .comment {
+    white-space: pre-wrap;
+    font-size: 14px;
+    line-height: 1.6;
+    background: #fff5f7;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    background: var(--pink);
+    color: white;
+    cursor: pointer;
+  }
+  button.copied {
+    background: #4caf50;
+  }
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    margin-top: 60px;
+  }
+</style>
+</head>
+<body>
+  <h1>本日の下書き<span class="date" id="date"></span></h1>
+  <div id="list"></div>
+
+  <script>
+    async function load() {
+      const listEl = document.getElementById("list");
+      try {
+        const res = await fetch("data/today.json", { cache: "no-store" });
+        if (!res.ok) throw new Error("no data");
+        const data = await res.json();
+        document.getElementById("date").textContent = data.date || "";
+
+        if (!data.drafts || data.drafts.length === 0) {
+          listEl.innerHTML = '<div class="empty">本日の下書きはまだありません</div>';
+          return;
+        }
+
+        data.drafts.forEach((d, i) => {
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            ${d.image_url ? `<img src="${d.image_url}" alt="">` : ""}
+            <div class="item-name">${d.item_name}</div>
+            <div class="item-price">¥${Number(d.item_price).toLocaleString()}</div>
+            <div class="comment">${escapeHtml(d.comment)}</div>
+            <button data-idx="${i}">コピーして投稿画面を開く</button>
+          `;
+          listEl.appendChild(card);
+
+          card.querySelector("button").addEventListener("click", async (e) => {
+            await navigator.clipboard.writeText(d.comment);
+            e.target.textContent = "コピーしました！";
+            e.target.classList.add("copied");
+            window.open(d.room_link, "_blank");
+          });
+        });
+      } catch (err) {
+        listEl.innerHTML = '<div class="empty">読み込みに失敗しました</div>';
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    load();
+  </script>
+</body>
+</html>
