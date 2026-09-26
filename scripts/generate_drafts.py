@@ -15,6 +15,7 @@ import json
 import os
 import random
 import re
+import time
 from datetime import datetime, timezone, timedelta
 
 import requests
@@ -210,15 +211,27 @@ def build_candidates(genre_key, genre_id, history):
     return candidates
 
 
-def call_gemini(prompt_text):
+def call_gemini(prompt_text, max_attempts=3):
     from google import genai
+    from google.genai import errors as genai_errors
 
     client = genai.Client(api_key=GEMINI_API_KEY)
-    response = client.models.generate_content(
-        model="gemini-flash-latest",
-        contents=prompt_text,
-    )
-    return response.text
+
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.models.generate_content(
+                model="gemini-flash-latest",
+                contents=prompt_text,
+            )
+            return response.text
+        except genai_errors.ServerError as e:
+            # 503(高負荷)等の一時的なサーバーエラーはリトライする
+            last_error = e
+            print(f"Gemini呼び出し失敗(試行{attempt}/{max_attempts}): {e}")
+            if attempt < max_attempts:
+                time.sleep(attempt * 10)  # 10s, 20s と間隔を空けて再試行
+    raise last_error
 
 
 def parse_gemini_output(raw_text):
