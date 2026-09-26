@@ -211,26 +211,34 @@ def build_candidates(genre_key, genre_id, history):
     return candidates
 
 
-def call_gemini(prompt_text, max_attempts=3):
+# "latest"エイリアスが混雑している場合に備え、具体的なモデルIDへのフォールバックも用意する
+GEMINI_MODEL_CANDIDATES = ["gemini-flash-latest", "gemini-2.5-flash"]
+GEMINI_BACKOFF_SECONDS = [20, 40, 60, 90]  # 試行間の待機時間(バッチ処理なので多少待っても問題ない)
+
+
+def call_gemini(prompt_text):
     from google import genai
     from google.genai import errors as genai_errors
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     last_error = None
-    for attempt in range(1, max_attempts + 1):
-        try:
-            response = client.models.generate_content(
-                model="gemini-flash-latest",
-                contents=prompt_text,
-            )
-            return response.text
-        except genai_errors.ServerError as e:
-            # 503(高負荷)等の一時的なサーバーエラーはリトライする
-            last_error = e
-            print(f"Gemini呼び出し失敗(試行{attempt}/{max_attempts}): {e}")
-            if attempt < max_attempts:
-                time.sleep(attempt * 10)  # 10s, 20s と間隔を空けて再試行
+    attempt = 0
+    for model in GEMINI_MODEL_CANDIDATES:
+        for backoff in [0] + GEMINI_BACKOFF_SECONDS:
+            attempt += 1
+            if backoff:
+                time.sleep(backoff)
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt_text,
+                )
+                return response.text
+            except genai_errors.ServerError as e:
+                # 503(高負荷)等の一時的なサーバーエラーはリトライ、モデルも切り替えて試す
+                last_error = e
+                print(f"Gemini呼び出し失敗(試行{attempt}, model={model}): {e}")
     raise last_error
 
 
