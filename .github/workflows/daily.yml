@@ -2,8 +2,10 @@ name: Daily draft generation
 
 on:
   schedule:
-    # 21:00 JST = 12:00 UTC
-    - cron: "0 12 * * *"
+    # 21:07 JST ≒ 12:07 UTC
+    # GitHub公式が「毎時ちょうど0分の実行は混雑で遅延・スキップされやすい」と明記しているため、
+    # 意図的にきりの悪い分にずらしている(21:00ジャストへのこだわりは薄いので数分のズレは許容)
+    - cron: "7 12 * * *"
   workflow_dispatch: {}
 
 permissions:
